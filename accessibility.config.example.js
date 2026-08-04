@@ -12,16 +12,19 @@ module.exports = {
   // src/config/types.ts AuthConfig. Fill in with real test credentials via env vars,
   // never commit credentials directly into this file.
   //
-  // loginPath/usernameSelector/passwordSelector/submitSelector describe the real
-  // login form and MUST be filled in against the actual app (placeholders below are
-  // guesses — this couldn't be verified against https://demo.investwell.app from the
-  // environment that built this skeleton; see src/scanner/login.ts).
+  // Selectors below were verified 2026-08-04 against a real rendered login page at
+  // http://spvithlani.investwellfront.com/app/#/login (a reachable local/dev
+  // environment — NOT demo.investwell.app, which is production and must never be
+  // an automated scan target). Note that URL is investwellFront's domain, not
+  // frontend-client's — confirm these selectors still match before relying on them
+  // for frontend-client specifically; they were captured by launching a real headless
+  // browser and inspecting the rendered DOM, not guessed.
   auth: {
     strategy: "credentials",
     loginPath: "/app/#/login",
-    usernameSelector: "#username",
-    passwordSelector: "#password",
-    submitSelector: "button[type=submit]",
+    usernameSelector: 'input[name="email"]',
+    passwordSelector: 'input[name="password"]',
+    submitSelector: "#signinButton",
     username: process.env.A11Y_TEST_USER,
     password: process.env.A11Y_TEST_PASSWORD,
   },
