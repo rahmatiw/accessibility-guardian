@@ -1,4 +1,10 @@
 # accessibility-guardian
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin git@github.com:rahmatiw/accessibility-guardian.git
+git push -u origin main
 
 Shared accessibility regression-detection CLI for Investwell's frontend repos. Scans every page of a
 running app, diffs the results against that repo's certified accessibility baseline, and reports only
