@@ -1,0 +1,25 @@
+{
+  "name": "accessibility-guardian",
+  "version": "0.1.0",
+  "description": "Shared accessibility regression-detection CLI for Investwell frontend repos: scans every page, diffs against a per-repo certified baseline, and reports only what actually changed.",
+  "main": "dist/index.js",
+  "bin": {
+    "accessibility-guardian": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node src/cli/index.ts"
+  },
+  "keywords": ["accessibility", "wcag", "a11y", "investwell"],
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2"
+  }
+}
