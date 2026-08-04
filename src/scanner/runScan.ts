@@ -17,7 +17,7 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
     const context = await browser.newContext({ baseURL: config.baseURL });
     const page = await context.newPage();
 
-    await login(page, config.baseURL, config.auth);
+    await login(page, config.baseURL, config.auth, config.reportDir);
 
     for (const route of routes) {
       await gotoAndSettle(page, new URL(route.path, config.baseURL).toString());

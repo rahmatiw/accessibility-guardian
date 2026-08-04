@@ -1,6 +1,22 @@
+import fs from "fs";
+import path from "path";
 import type { Page } from "playwright";
 import { AuthConfig } from "../config/types";
 import { gotoAndSettle } from "./navigate";
+
+async function captureFailureEvidence(page: Page, reportDir: string, label: string): Promise<string> {
+  fs.mkdirSync(reportDir, { recursive: true });
+  const screenshotPath = path.join(reportDir, `${label}.png`);
+  const htmlPath = path.join(reportDir, `${label}.html`);
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+  await fs
+    .promises.writeFile(htmlPath, await page.content().catch(() => "(could not capture HTML)"))
+    .catch(() => {});
+  const visibleText = await page
+    .evaluate(() => document.body?.innerText?.slice(0, 2000) ?? "")
+    .catch(() => "(could not read page text)");
+  return `Screenshot: ${screenshotPath}\nHTML dump: ${htmlPath}\nVisible page text (first 2000 chars):\n${visibleText}`;
+}
 
 /**
  * Generic credentials-based login: fills a username/password form and submits it.
@@ -12,7 +28,12 @@ import { gotoAndSettle } from "./navigate";
  * must never be an automated scan target regardless. `username`/`password` are real
  * secrets and must come from env vars, never hardcoded in accessibility.config.js.
  */
-export async function login(page: Page, baseURL: string, auth: AuthConfig): Promise<void> {
+export async function login(
+  page: Page,
+  baseURL: string,
+  auth: AuthConfig,
+  reportDir: string
+): Promise<void> {
   if (auth.strategy === "none") return;
 
   if (auth.strategy === "token") {
@@ -53,10 +74,14 @@ export async function login(page: Page, baseURL: string, auth: AuthConfig): Prom
       timeout: 15000,
     });
   } catch {
+    const evidence = await captureFailureEvidence(page, reportDir, "login-failure");
     throw new Error(
       `Login did not navigate to a URL containing "${postLoginUrlIncludes}" within 15s — still on ` +
-        `${page.url()}. Likely wrong credentials, a changed login flow, or postLoginUrlIncludes needs ` +
-        "updating in accessibility.config.js."
+        `${page.url()}.\n\n` +
+        "This does NOT necessarily mean the credentials are wrong — see the captured evidence below " +
+        "for what was actually on screen (an inline validation error, a CAPTCHA, an unexpected extra " +
+        "step, the click landing on the wrong element, etc.) before assuming that.\n\n" +
+        evidence
     );
   }
 
