@@ -4,6 +4,7 @@ import { GuardianConfig } from "../config/types";
 import { PageScanResult, ScanRunResult } from "./types";
 import { login } from "./login";
 import { axeResultsToViolations } from "./axeToViolations";
+import { gotoAndSettle } from "./navigate";
 
 export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
   const startedAt = new Date().toISOString();
@@ -19,8 +20,7 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
     await login(page, config.baseURL, config.auth);
 
     for (const route of routes) {
-      await page.goto(route.path);
-      await page.waitForLoadState("networkidle");
+      await gotoAndSettle(page, new URL(route.path, config.baseURL).toString());
 
       const axeResults = await new AxeBuilder({ page }).analyze();
       const violations = axeResultsToViolations(axeResults);

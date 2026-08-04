@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import { AuthConfig } from "../config/types";
+import { gotoAndSettle } from "./navigate";
 
 /**
  * Generic credentials-based login: fills a username/password form and submits it.
@@ -35,7 +36,8 @@ export async function login(page: Page, baseURL: string, auth: AuthConfig): Prom
     );
   }
 
-  await page.goto(new URL(auth.loginPath as string, baseURL).toString());
+  await gotoAndSettle(page, new URL(auth.loginPath as string, baseURL).toString());
+  await page.waitForSelector(auth.usernameSelector as string, { timeout: 30000 });
   await page.fill(auth.usernameSelector as string, auth.username as string);
   await page.fill(auth.passwordSelector as string, auth.password as string);
   await page.click(auth.submitSelector as string);
@@ -58,5 +60,10 @@ export async function login(page: Page, baseURL: string, auth: AuthConfig): Prom
     );
   }
 
-  await page.waitForLoadState("networkidle");
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 8000 });
+  } catch {
+    // Same reasoning as gotoAndSettle: don't fail an already-successful login just
+    // because some background connection (analytics, etc.) never quiesces.
+  }
 }
