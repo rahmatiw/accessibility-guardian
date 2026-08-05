@@ -175,9 +175,34 @@ export async function login(
   }
 
   if (outcome === "mobileStep") {
-    const mobileNumber = randomIndianMobileNumber();
+    // A random number does NOT work here — verified 2026-08-05: this step does a real
+    // lookup against the account and returns "No user found" for an unregistered
+    // number. auth.mobileNumber must be the real number registered against the test
+    // account; random generation is kept only as a fallback for apps where this step
+    // genuinely doesn't validate the number (unconfirmed for any app so far).
+    const mobileNumber = (auth.mobileNumber as string) ?? randomIndianMobileNumber();
     await page.fill(mobileSelector, mobileNumber);
     await page.click(mobileSubmitSelector);
+
+    // Fail fast on a rejected mobile number (e.g. "No user found") instead of letting
+    // the OTP-input search below time out with a confusing "couldn't find OTP field"
+    // error that has nothing to do with the real problem.
+    await page.waitForTimeout(1500);
+    const rejectionText = await page
+      .evaluate(() => document.body?.innerText ?? "")
+      .then((text) => {
+        const match = /no user found|invalid mobile|not registered|mobile.*not.*found/i.exec(text);
+        return match ? match[0] : null;
+      })
+      .catch(() => null);
+    if (rejectionText) {
+      const evidence = await captureFailureEvidence(page, reportDir, "mobile-number-rejected");
+      throw new Error(
+        `Mobile number "${mobileNumber}" was rejected ("${rejectionText}"). Set auth.mobileNumber in ` +
+          "accessibility.config.js (via an env var) to the real number registered against this test " +
+          `account — see ${reportDir}/mobile-number-rejected.png for what was shown.`
+      );
+    }
 
     const otpFilled = await fillOtp(page, auth, otpValue).catch(() => false);
     if (!otpFilled) {
