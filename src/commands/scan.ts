@@ -32,7 +32,17 @@ export async function scanCommand(cwd: string = process.cwd()): Promise<number> 
   const failedPages = scanResult.pages
     .filter((page) => page.scanError)
     .map((page) => ({ pageSlug: page.pageSlug, error: page.scanError as string }));
-  const report = buildReport(config.app, config.environment, allDiffs, scanResult.pages.length, failedPages);
+  const excludedPages = scanResult.pages
+    .filter((page) => page.excludedReason)
+    .map((page) => ({ pageSlug: page.pageSlug, reason: page.excludedReason as string }));
+  const report = buildReport(
+    config.app,
+    config.environment,
+    allDiffs,
+    scanResult.pages.length,
+    failedPages,
+    excludedPages
+  );
 
   fs.mkdirSync(config.reportDir, { recursive: true });
   fs.writeFileSync(path.join(config.reportDir, "report.md"), generateMarkdown(report));

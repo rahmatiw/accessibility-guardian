@@ -10,6 +10,10 @@ export interface DiffResult {
   description: string;
   severity: string;
   diffStatus: DiffStatus;
+  componentName?: string | null;
+  sourceFile?: string | null;
+  sourceLine?: number | null;
+  sourceAmbiguous?: boolean;
 }
 
 /**
@@ -23,9 +27,10 @@ export interface DiffResult {
  * grouping; element-level matching (via `selector`) is unimplemented.
  */
 export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffResult[] {
-  if (scan.scanError) {
-    // An empty violations list here means "we don't know", not "all clear" — diffing
-    // it would wrongly report every previously-open finding on this page as "fixed".
+  if (scan.scanError || scan.excludedReason) {
+    // An empty violations list here means "we don't know" (failed) or "deliberately
+    // not checked" (excluded) — either way, not "all clear". Diffing it would wrongly
+    // report every previously-open finding on this page as "fixed".
     return [];
   }
 
@@ -72,6 +77,10 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
       description: violation.description,
       severity: violation.severity,
       diffStatus,
+      componentName: violation.componentName,
+      sourceFile: violation.sourceFile,
+      sourceLine: violation.sourceLine,
+      sourceAmbiguous: violation.sourceAmbiguous,
     });
   }
 

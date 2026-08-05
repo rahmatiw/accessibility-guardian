@@ -6,6 +6,7 @@ import { login } from "./login";
 import { axeResultsToViolations } from "./axeToViolations";
 import { gotoAndSettle } from "./navigate";
 import { resolveClientSession } from "./clientImpersonation";
+import { getComponentNameForSelector, locateComponentSource, ComponentSourceLocation } from "./componentSource";
 
 export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
   const startedAt = new Date().toISOString();
@@ -13,17 +14,38 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
 
   const browser = await chromium.launch();
   const pages: PageScanResult[] = [];
+  // One source-tree walk per unique component name for the whole run, not per violation.
+  const sourceLocationCache = new Map<string, ComponentSourceLocation | null>();
 
   try {
     const context = await browser.newContext({ baseURL: config.baseURL });
     const loginPage = await context.newPage();
 
     await login(loginPage, config.baseURL, config.auth, config.reportDir);
-    const page = await resolveClientSession(loginPage, context, config.auth);
+    // Establishes the authenticated session in the context's cookies (via a broker->
+    // client handoff, if configured) — the returned page itself isn't reused; every
+    // route below gets its own fresh page, per the fix above.
+    await resolveClientSession(loginPage, context, config.auth);
+
+    const excludedBySlug = new Map((config.excludedRoutes ?? []).map((r) => [r.slug, r.reason]));
 
     for (let i = 0; i < routes.length; i++) {
       const route = routes[i];
       const pageUrl = new URL(route.path, config.baseURL).toString();
+
+      const excludedReason = excludedBySlug.get(route.slug);
+      if (excludedReason) {
+        console.log(`[${i + 1}/${routes.length}] Skipping ${route.slug}: ${excludedReason}`);
+        pages.push({
+          pageSlug: route.slug,
+          pageUrl,
+          violations: [],
+          scannedAt: new Date().toISOString(),
+          excludedReason,
+        });
+        continue;
+      }
+
       console.log(`[${i + 1}/${routes.length}] Scanning ${route.slug} (${pageUrl})`);
 
       // A fresh page per route, not the shared login/impersonation page: verified
@@ -39,6 +61,26 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
         await gotoAndSettle(routePage, pageUrl);
         const axeResults = await new AxeBuilder({ page: routePage }).analyze();
         const violations = axeResultsToViolations(axeResults);
+
+        if (config.sourceDir) {
+          for (const violation of violations) {
+            const componentName = await getComponentNameForSelector(routePage, violation.selector).catch(
+              () => null
+            );
+            violation.componentName = componentName;
+            if (!componentName) continue;
+
+            if (!sourceLocationCache.has(componentName)) {
+              sourceLocationCache.set(componentName, locateComponentSource(componentName, config.sourceDir));
+            }
+            const location = sourceLocationCache.get(componentName);
+            if (location) {
+              violation.sourceFile = location.file;
+              violation.sourceLine = location.line;
+              violation.sourceAmbiguous = location.ambiguous;
+            }
+          }
+        }
 
         pages.push({
           pageSlug: route.slug,

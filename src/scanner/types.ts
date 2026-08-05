@@ -9,6 +9,13 @@ export interface ScanViolation {
   severity: "Critical" | "Major" | "Minor";
   selector: string; // CSS selector / component location of the failing element
   helpUrl?: string;
+  /** Nearest real React component name, from live fiber inspection — see componentSource.ts. */
+  componentName?: string | null;
+  /** File path (relative to config.sourceDir) + line where componentName is declared, if found via source grep. */
+  sourceFile?: string | null;
+  sourceLine?: number | null;
+  /** True if more than one file matched componentName — sourceFile/sourceLine is a best guess, not certain. */
+  sourceAmbiguous?: boolean;
 }
 
 export interface PageScanResult {
@@ -18,6 +25,8 @@ export interface PageScanResult {
   scannedAt: string;
   /** Set when this page couldn't be scanned (nav failure, axe crash, etc.) — violations will be empty, not "clean". */
   scanError?: string;
+  /** Set when this page was deliberately skipped (config.excludedRoutes) rather than failing unexpectedly. */
+  excludedReason?: string;
 }
 
 export interface ScanRunResult {

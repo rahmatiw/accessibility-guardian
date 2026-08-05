@@ -30,6 +30,20 @@ export interface GuardianConfig {
   routeDiscovery: RouteDiscoveryStrategy;
   baselineDir: string; // path to this repo's accessibility/baseline/
   reportDir: string; // where to write the Markdown + JSON report
+  /**
+   * Path to the app's React source root, for grep-based component/file/line lookup
+   * (src/scanner/componentSource.ts) — not real AST analysis, still out of scope per
+   * the requirements doc §11. Optional: if unset, reports fall back to selector-only.
+   */
+  sourceDir?: string;
+  /**
+   * Pages known to be unreachable via direct navigation right now — e.g. a stateful
+   * multi-step wizard route that needs a prior step's in-progress application id, or a
+   * page gated behind something automation can't (and shouldn't) get past, like a
+   * misconfigured reCAPTCHA. Skipped explicitly and reported as "excluded", distinct
+   * from a scan failure — this is a known limitation, not a bug in a given run.
+   */
+  excludedRoutes?: { slug: string; reason: string }[];
 }
 
 export type { PageScanResult };
