@@ -16,6 +16,8 @@ export interface PageScanResult {
   pageUrl: string;
   violations: ScanViolation[];
   scannedAt: string;
+  /** Set when this page couldn't be scanned (nav failure, axe crash, etc.) — violations will be empty, not "clean". */
+  scanError?: string;
 }
 
 export interface ScanRunResult {

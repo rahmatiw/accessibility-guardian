@@ -26,18 +26,19 @@ export async function scanCommand(cwd: string = process.cwd()): Promise<number> 
       `${routes.length} routes discovered via "${config.routeDiscovery.name}".`
   );
 
-  // This throws today — see src/scanner/runScan.ts. Left as a real call (not stubbed
-  // out silently) so `accessibility-guardian scan` fails loudly and specifically
-  // until the scanner is implemented, rather than reporting a false "all clear".
   const scanResult = await runScan(config);
 
   const allDiffs = scanResult.pages.flatMap((page) => diffPage(page, baseline));
-  const report = buildReport(config.app, config.environment, allDiffs, scanResult.pages.length);
+  const failedPages = scanResult.pages
+    .filter((page) => page.scanError)
+    .map((page) => ({ pageSlug: page.pageSlug, error: page.scanError as string }));
+  const report = buildReport(config.app, config.environment, allDiffs, scanResult.pages.length, failedPages);
 
   fs.mkdirSync(config.reportDir, { recursive: true });
   fs.writeFileSync(path.join(config.reportDir, "report.md"), generateMarkdown(report));
   fs.writeFileSync(path.join(config.reportDir, "report.json"), generateJson(report));
 
-  const exitCode = (report.summary.byDiffStatus["new"] ?? 0) > 0 ? 1 : 0;
+  const hasNewIssues = (report.summary.byDiffStatus["new"] ?? 0) > 0;
+  const exitCode = hasNewIssues || failedPages.length > 0 ? 1 : 0;
   return exitCode;
 }

@@ -5,6 +5,7 @@ import { PageScanResult, ScanRunResult } from "./types";
 import { login } from "./login";
 import { axeResultsToViolations } from "./axeToViolations";
 import { gotoAndSettle } from "./navigate";
+import { resolveClientSession } from "./clientImpersonation";
 
 export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
   const startedAt = new Date().toISOString();
@@ -15,22 +16,40 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
 
   try {
     const context = await browser.newContext({ baseURL: config.baseURL });
-    const page = await context.newPage();
+    const loginPage = await context.newPage();
 
-    await login(page, config.baseURL, config.auth, config.reportDir);
+    await login(loginPage, config.baseURL, config.auth, config.reportDir);
+    const page = await resolveClientSession(loginPage, context, config.auth);
 
-    for (const route of routes) {
-      await gotoAndSettle(page, new URL(route.path, config.baseURL).toString());
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      const pageUrl = new URL(route.path, config.baseURL).toString();
+      console.log(`[${i + 1}/${routes.length}] Scanning ${route.slug} (${pageUrl})`);
 
-      const axeResults = await new AxeBuilder({ page }).analyze();
-      const violations = axeResultsToViolations(axeResults);
+      try {
+        await gotoAndSettle(page, pageUrl);
+        const axeResults = await new AxeBuilder({ page }).analyze();
+        const violations = axeResultsToViolations(axeResults);
 
-      pages.push({
-        pageSlug: route.slug,
-        pageUrl: new URL(route.path, config.baseURL).toString(),
-        violations,
-        scannedAt: new Date().toISOString(),
-      });
+        pages.push({
+          pageSlug: route.slug,
+          pageUrl,
+          violations,
+          scannedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        // One flaky page (a mid-scan SPA redirect, a slow third-party widget, etc.)
+        // shouldn't cost the other 55 pages' worth of results — record and move on.
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`  -> FAILED to scan ${route.slug}: ${message}`);
+        pages.push({
+          pageSlug: route.slug,
+          pageUrl,
+          violations: [],
+          scannedAt: new Date().toISOString(),
+          scanError: message,
+        });
+      }
     }
   } finally {
     await browser.close();

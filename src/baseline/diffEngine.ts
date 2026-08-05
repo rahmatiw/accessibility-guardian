@@ -23,6 +23,12 @@ export interface DiffResult {
  * grouping; element-level matching (via `selector`) is unimplemented.
  */
 export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffResult[] {
+  if (scan.scanError) {
+    // An empty violations list here means "we don't know", not "all clear" — diffing
+    // it would wrongly report every previously-open finding on this page as "fixed".
+    return [];
+  }
+
   const pageBaseline = baseline.pages.get(scan.pageSlug);
   if (!pageBaseline) {
     // A page with no baseline entry at all is out of scope for this diff — it's a

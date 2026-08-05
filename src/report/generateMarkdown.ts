@@ -7,6 +7,20 @@ export function generateMarkdown(report: ScanReport): string {
   lines.push(`Generated: ${report.generatedAt}`);
   lines.push(`Pages scanned: ${report.pagesScanned}`);
   lines.push("");
+
+  if (report.failedPages.length > 0) {
+    lines.push(
+      `## ⚠ ${report.failedPages.length} page(s) could not be scanned (not "clean" — unknown; not diffed against baseline)`
+    );
+    lines.push("");
+    lines.push("| Page | Error |");
+    lines.push("|---|---|");
+    for (const f of report.failedPages) {
+      lines.push(`| ${f.pageSlug} | ${f.error} |`);
+    }
+    lines.push("");
+  }
+
   lines.push("## Summary");
   lines.push("");
   lines.push("| Status | Count |");
