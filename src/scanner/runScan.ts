@@ -22,10 +22,23 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
     const loginPage = await context.newPage();
 
     await login(loginPage, config.baseURL, config.auth, config.reportDir);
-    // Establishes the authenticated session in the context's cookies (via a broker->
-    // client handoff, if configured) — the returned page itself isn't reused; every
-    // route below gets its own fresh page, per the fix above.
-    await resolveClientSession(loginPage, context, config.auth);
+    const authenticatedPage = await resolveClientSession(loginPage, context, config.auth);
+
+    // CRITICAL: this app keeps real session identity (uid/user/levelNo) in
+    // sessionStorage, not just cookies — confirmed 2026-08-05 by inspecting it
+    // directly. sessionStorage is strictly per-tab in every browser; Playwright's
+    // context.newPage() opens an unrelated top-level browsing context with no
+    // "opener", so it does NOT inherit it the way a real window.open()-created tab
+    // would (which is exactly why the client-impersonation popup itself worked, but
+    // every subsequent fresh page in the scan loop silently lost auth and bounced to
+    // login — verified: 47 of 48 non-excluded routes were actually re-scanning the
+    // login page under the wrong slug). Captured once here and re-injected into every
+    // route's page below via addInitScript, which runs before the page's own scripts.
+    // Wrapped in a catch: with auth.strategy "none" there's no real navigation yet
+    // (page is still about:blank), where reading sessionStorage throws a SecurityError.
+    const authenticatedSessionStorage = await authenticatedPage
+      .evaluate(() => Object.entries(window.sessionStorage))
+      .catch(() => [] as [string, string][]);
 
     const excludedBySlug = new Map((config.excludedRoutes ?? []).map((r) => [r.slug, r.reason]));
 
@@ -53,10 +66,15 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
       // mid-navigation failure (e.g. axe's evaluate racing an SPA redirect, as
       // happened on a real /app/#/kycOnBoarding/... route) leaves that page's
       // navigation state corrupted, cascading into every subsequent route reporting
-      // itself "interrupted by" the *previous* iteration's target. Session auth is
-      // stored in the context's cookies, not the page, so a new page here is still
-      // fully authenticated.
+      // itself "interrupted by" the *previous* iteration's target.
       const routePage = await context.newPage();
+      // Re-inject the real session's sessionStorage before any page script runs —
+      // see the comment above authenticatedSessionStorage for why this is necessary.
+      await routePage.addInitScript((entries) => {
+        for (const [key, value] of entries) {
+          window.sessionStorage.setItem(key, value);
+        }
+      }, authenticatedSessionStorage);
       try {
         await gotoAndSettle(routePage, pageUrl);
         const axeResults = await new AxeBuilder({ page: routePage }).analyze();
