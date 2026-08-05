@@ -65,7 +65,12 @@ async function fillOtp(page: Page, auth: AuthConfig, otpValue: string): Promise<
     const count = await boxes.count();
     if (count > 0) {
       for (let i = 0; i < count && i < otpValue.length; i++) {
-        await boxes.nth(i).fill(otpValue[i]);
+        // pressSequentially, not fill: separate digit boxes almost always rely on
+        // real keyup/keydown events (to auto-advance focus and to flip the parent
+        // form's "OTP complete" state that enables the submit button) — fill() sets
+        // the value directly without firing those. Verified 2026-08-05: fill()
+        // populated all 6 boxes visually but left "Confirm OTP" disabled.
+        await boxes.nth(i).pressSequentially(otpValue[i]);
       }
       return true;
     }
@@ -76,7 +81,7 @@ async function fillOtp(page: Page, auth: AuthConfig, otpValue: string): Promise<
   const digitBoxCount = await digitBoxes.count();
   if (digitBoxCount >= 4 && digitBoxCount <= 8) {
     for (let i = 0; i < digitBoxCount; i++) {
-      await digitBoxes.nth(i).fill(otpValue[i % otpValue.length]);
+      await digitBoxes.nth(i).pressSequentially(otpValue[i % otpValue.length]);
     }
     return true;
   }
