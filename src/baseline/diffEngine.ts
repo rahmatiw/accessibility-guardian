@@ -6,10 +6,14 @@ export type DiffStatus = "new" | "existing" | "fixed" | "reopened" | "waived";
 
 export interface DiffResult {
   pageSlug: string;
+  pageUrl: string;
   criteriaCode: string | null;
+  ruleId: string | null;
   description: string;
   severity: string;
   diffStatus: DiffStatus;
+  selector: string | null;
+  helpUrl: string | null;
   componentName?: string | null;
   sourceFile?: string | null;
   sourceLine?: number | null;
@@ -73,10 +77,14 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
 
     results.push({
       pageSlug: scan.pageSlug,
+      pageUrl: scan.pageUrl,
       criteriaCode: code,
+      ruleId: violation.ruleId,
       description: violation.description,
       severity: violation.severity,
       diffStatus,
+      selector: violation.selector,
+      helpUrl: violation.helpUrl ?? null,
       componentName: violation.componentName,
       sourceFile: violation.sourceFile,
       sourceLine: violation.sourceLine,
@@ -89,10 +97,14 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
     if (status === "open" && !criteriaSeenInScan.has(code)) {
       results.push({
         pageSlug: scan.pageSlug,
+        pageUrl: scan.pageUrl,
         criteriaCode: code,
+        ruleId: null,
         description: "(no longer reproduces)",
         severity: "",
         diffStatus: "fixed",
+        selector: null,
+        helpUrl: null,
       });
     }
   }

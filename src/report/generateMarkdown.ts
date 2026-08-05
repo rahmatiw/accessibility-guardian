@@ -1,4 +1,63 @@
+import { DiffResult } from "../baseline/diffEngine";
+import { criteriaTitle } from "../scanner/wcagMapping";
 import { ScanReport } from "./types";
+
+const STATUS_LABEL: Record<string, string> = {
+  new: "🔴 NEW",
+  reopened: "🟠 REOPENED",
+  existing: "🟡 EXISTING",
+  fixed: "🟢 FIXED",
+  waived: "⚪ WAIVED (accepted, no action needed)",
+};
+
+/**
+ * axe-core's own description text looks like "Fix any of the following:\n  bullet one\n
+ * bullet two" — dumped into a Markdown table cell (the old format) that collapses
+ * newlines, it reads as one unreadable run-on sentence. This turns it into a real
+ * bulleted list instead.
+ */
+function formatProblem(description: string): string {
+  const lines = description
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length <= 1) return description.trim();
+
+  const [first, ...rest] = lines;
+  return [first, ...rest.map((l) => `  - ${l}`)].join("\n");
+}
+
+function formatIssue(r: DiffResult): string {
+  const label = STATUS_LABEL[r.diffStatus] ?? r.diffStatus;
+  const criterionLine = r.criteriaCode
+    ? `**${r.criteriaCode} ${criteriaTitle(r.criteriaCode)}**`
+    : "**(no specific WCAG criterion — an axe best-practice check, outside the certified audit's original 55-criterion scope)**";
+
+  const lines: string[] = [];
+  lines.push(`#### ${label} — ${criterionLine} — ${r.severity || "n/a"}`);
+  lines.push("");
+  lines.push(`**Problem:** ${formatProblem(r.description)}`);
+  if (r.ruleId) {
+    lines.push("");
+    lines.push(`**Rule:** \`${r.ruleId}\`${r.helpUrl ? ` — [more info](${r.helpUrl})` : ""}`);
+  }
+  if (r.selector) {
+    lines.push("");
+    lines.push(`**Where to find it:** open the page above, then in browser DevTools search for this element:`);
+    lines.push("```");
+    lines.push(r.selector);
+    lines.push("```");
+  }
+  if (r.componentName && r.sourceFile) {
+    lines.push("");
+    lines.push(
+      `**Possible source (best-effort guess, verify before trusting):** ${r.componentName} in \`${r.sourceFile}${
+        r.sourceLine ? `:${r.sourceLine}` : ""
+      }\`${r.sourceAmbiguous ? " — multiple files matched this component name, could be wrong" : ""}`
+    );
+  }
+  return lines.join("\n");
+}
 
 export function generateMarkdown(report: ScanReport): string {
   const lines: string[] = [];
@@ -10,7 +69,7 @@ export function generateMarkdown(report: ScanReport): string {
 
   if (report.excludedPages.length > 0) {
     lines.push(
-      `## ⊘ ${report.excludedPages.length} page(s) deliberately excluded (known limitation, not a failure — not diffed against baseline)`
+      `## ⊘ ${report.excludedPages.length} page(s) deliberately excluded (known limitation, not a failure — not checked this run)`
     );
     lines.push("");
     lines.push("| Page | Reason |");
@@ -23,7 +82,7 @@ export function generateMarkdown(report: ScanReport): string {
 
   if (report.failedPages.length > 0) {
     lines.push(
-      `## ⚠ ${report.failedPages.length} page(s) could not be scanned (not "clean" — unknown; not diffed against baseline)`
+      `## ⚠ ${report.failedPages.length} page(s) could not be scanned (not "clean" — unknown; not checked this run)`
     );
     lines.push("");
     lines.push("| Page | Error |");
@@ -39,7 +98,7 @@ export function generateMarkdown(report: ScanReport): string {
   lines.push("| Status | Count |");
   lines.push("|---|---|");
   for (const [status, count] of Object.entries(report.summary.byDiffStatus)) {
-    lines.push(`| ${status} | ${count} |`);
+    lines.push(`| ${STATUS_LABEL[status] ?? status} | ${count} |`);
   }
   lines.push("");
 
@@ -49,19 +108,31 @@ export function generateMarkdown(report: ScanReport): string {
 
   if (actionable.length === 0) {
     lines.push("No new, reopened, or existing open issues found.");
-  } else {
-    lines.push("## Open issues");
+    return lines.join("\n");
+  }
+
+  lines.push("## Issues by page");
+  lines.push("");
+  lines.push(
+    "Each page below lists only what actually needs attention (new/reopened/existing) — " +
+      "waived and fixed items are counted in the summary above but not repeated here."
+  );
+  lines.push("");
+
+  const byPage = new Map<string, DiffResult[]>();
+  for (const r of actionable) {
+    if (!byPage.has(r.pageSlug)) byPage.set(r.pageSlug, []);
+    byPage.get(r.pageSlug)!.push(r);
+  }
+
+  for (const [pageSlug, issues] of [...byPage.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    lines.push(`### ${pageSlug}`);
     lines.push("");
-    lines.push("| Page | Criterion | Status | Severity | Component (file:line) | Description |");
-    lines.push("|---|---|---|---|---|---|");
-    for (const r of actionable) {
-      let component = r.componentName ?? "—";
-      if (r.sourceFile) {
-        component += ` (${r.sourceFile}:${r.sourceLine}${r.sourceAmbiguous ? ", ambiguous — multiple matches" : ""})`;
-      }
-      lines.push(
-        `| ${r.pageSlug} | ${r.criteriaCode ?? "—"} | ${r.diffStatus} | ${r.severity} | ${component} | ${r.description} |`
-      );
+    lines.push(issues[0].pageUrl);
+    lines.push("");
+    for (const issue of issues) {
+      lines.push(formatIssue(issue));
+      lines.push("");
     }
   }
 
