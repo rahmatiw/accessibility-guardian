@@ -26,9 +26,18 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
       const pageUrl = new URL(route.path, config.baseURL).toString();
       console.log(`[${i + 1}/${routes.length}] Scanning ${route.slug} (${pageUrl})`);
 
+      // A fresh page per route, not the shared login/impersonation page: verified
+      // 2026-08-05 that reusing one page across all 56 routes means a single
+      // mid-navigation failure (e.g. axe's evaluate racing an SPA redirect, as
+      // happened on a real /app/#/kycOnBoarding/... route) leaves that page's
+      // navigation state corrupted, cascading into every subsequent route reporting
+      // itself "interrupted by" the *previous* iteration's target. Session auth is
+      // stored in the context's cookies, not the page, so a new page here is still
+      // fully authenticated.
+      const routePage = await context.newPage();
       try {
-        await gotoAndSettle(page, pageUrl);
-        const axeResults = await new AxeBuilder({ page }).analyze();
+        await gotoAndSettle(routePage, pageUrl);
+        const axeResults = await new AxeBuilder({ page: routePage }).analyze();
         const violations = axeResultsToViolations(axeResults);
 
         pages.push({
@@ -49,6 +58,8 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
           scannedAt: new Date().toISOString(),
           scanError: message,
         });
+      } finally {
+        await routePage.close().catch(() => {});
       }
     }
   } finally {
