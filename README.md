@@ -24,15 +24,15 @@ Full design rationale: `docs/accessibility-guardian-requirements.md` in the fron
 | WCAG mapping (axe rule tags → SC codes) | Implemented (`src/scanner/wcagMapping.ts`), built from the same 55-criterion list as the baseline |
 | Diff engine (New/Existing/Fixed/Reopened/Waived) | Implemented and verified live (existing/reopened/fixed all reproduced against a real axe-core scan — element-level matching via CSS selector, beyond page+criteria, is still a TODO) |
 | Report generator (Markdown + JSON) | Implemented and verified |
-| Login (`src/scanner/login.ts`) | **Implemented but unverified against the real app.** Generic credentials-based form-fill, but the actual selectors (`usernameSelector`, `passwordSelector`, etc.) in `accessibility.config.example.js` are placeholders — this environment got a 403 trying to reach `https://demo.investwell.app` to inspect the real login form. Throws a clear error naming missing config rather than silently doing nothing. |
+| Login (`src/scanner/login.ts`) | **Partially verified against the real app.** Credentials selectors captured from real DOM (see below); a real run then revealed a second mobile-number + OTP step the original single-step design didn't account for — added, but the OTP screen's own selectors are auto-detected/best-effort (see below), not yet confirmed against real DOM the way the credentials and mobile-number steps were. |
 | Baseline re-learn command | **Not implemented** |
 | Knowledge base (fix-pattern learning, doc §8.2) | Types only, no storage yet — open question in the doc (§12.8) about per-repo vs. shared storage isn't resolved |
 
-## Verified, but not against the real app
+## Verified against a fixture (diff/report pipeline) and a real app (login mechanics)
 
 `demo.investwell.app` returned HTTP 403 to this environment (likely WAF/bot protection, or it's only
-reachable from a specific network) — so the scanner was proven against a local fixture instead of the real
-frontend-client deployment:
+reachable from a specific network) and is production regardless — never an automated scan target. The
+diff/report pipeline was proven against a local fixture instead:
 
 - A tiny local static server serving two hand-written HTML pages, one with real accessibility violations
   (missing `alt`, low-contrast text) and one clean.
@@ -42,6 +42,23 @@ frontend-client deployment:
 - Running the real `accessibility-guardian scan` CLI against this fixture produced exactly the expected
   classifications in both `report.md` and `report.json`, using the real Playwright + axe-core scan path,
   not a mock.
+
+Separately, login mechanics were verified against `spvithlani.investwellfront.com` (reachable, non-prod)
+across several real, iterative runs:
+
+1. First attempt: `page.goto()` timed out at 30s. Root cause: it defaults to `waitUntil: "load"`, which
+   waits for every resource including third-party scripts (Google Sign-In, an embedded widget) that took
+   longer than 30s on the user's network. Fixed with `gotoAndSettle()` — `domcontentloaded` only, plus a
+   best-effort bounded `networkidle` wait.
+2. Second attempt: login "succeeded" (no thrown error) but never reached `/client/`. The user confirmed
+   the same credentials worked via manual login, so credentials weren't the issue. Added automatic
+   screenshot/HTML/visible-text capture on failure rather than guessing further — this immediately showed
+   the real cause: a second **mobile-number + OTP step** the original design didn't know existed.
+3. Added that step with real selectors captured from the failure screenshot/HTML dump (`input[name="mobile"]`,
+   `input[type="submit"][value="Send OTP"]`). The OTP screen itself is still unconfirmed — its selectors are
+   auto-detected (single field or 4-8 digit boxes) with the same evidence-capture-on-failure fallback if the
+   guess is wrong, per the user (this is a dev env where any OTP value is accepted, so correctness here is
+   about *finding* the input, not the value).
 
 **What this proves:** the scan → WCAG-mapping → diff → report pipeline is genuinely correct.
 **What it doesn't prove:** that login against the real app works, or that axe-core's findings against the

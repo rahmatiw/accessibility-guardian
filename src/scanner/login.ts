@@ -18,15 +18,105 @@ async function captureFailureEvidence(page: Page, reportDir: string, label: stri
   return `Screenshot: ${screenshotPath}\nHTML dump: ${htmlPath}\nVisible page text (first 2000 chars):\n${visibleText}`;
 }
 
+/** Random 10-digit Indian mobile number (first digit 6-9, per the "+91" prefix shown on the mobile-entry step). */
+function randomIndianMobileNumber(): string {
+  const firstDigit = "6789"[Math.floor(Math.random() * 4)];
+  let rest = "";
+  for (let i = 0; i < 9; i++) rest += Math.floor(Math.random() * 10);
+  return firstDigit + rest;
+}
+
+type StepOutcome = "navigated" | "mobileStep";
+
+async function waitForNavigationOrMobileStep(
+  page: Page,
+  postLoginUrlIncludes: string,
+  mobileSelector: string,
+  timeout: number
+): Promise<StepOutcome> {
+  return Promise.any([
+    page
+      .waitForURL((url) => url.toString().includes(postLoginUrlIncludes), { timeout })
+      .then((): StepOutcome => "navigated"),
+    page.waitForSelector(mobileSelector, { timeout, state: "visible" }).then((): StepOutcome => "mobileStep"),
+  ]);
+}
+
 /**
- * Generic credentials-based login: fills a username/password form and submits it.
- * Deliberately configurable rather than hardcoded to any one app's login DOM.
- * `loginPath`/`usernameSelector`/`passwordSelector`/`submitSelector` were verified
- * 2026-08-04 against http://spvithlani.investwellfront.com/app/#/login (reachable
- * local/dev env) by launching a real headless browser and inspecting the rendered
- * DOM — demo.investwell.app is production, returned 403 to this environment, and
- * must never be an automated scan target regardless. `username`/`password` are real
- * secrets and must come from env vars, never hardcoded in accessibility.config.js.
+ * Best-effort OTP fill: this environment accepts any OTP value (confirmed by the user
+ * for spvithlani.investwellfront.com — it's a dev/local env, not real SMS-backed), so
+ * correctness here is about *finding* the right input(s), not the value. Handles the
+ * two common OTP UI shapes: a single field, or N separate single-digit boxes. Real
+ * selectors are unknown (this step wasn't reachable before the mobile-number step was
+ * added) — override via auth.otpSelector / auth.otpDigitBoxSelector if this guess is
+ * wrong; failure captures evidence the same way the mobile/credentials steps do.
+ */
+async function fillOtp(page: Page, auth: AuthConfig, otpValue: string): Promise<boolean> {
+  if (auth.otpSelector) {
+    const el = page.locator(auth.otpSelector as string).first();
+    if ((await el.count()) > 0) {
+      await el.fill(otpValue);
+      return true;
+    }
+  }
+
+  if (auth.otpDigitBoxSelector) {
+    const boxes = page.locator(auth.otpDigitBoxSelector as string);
+    const count = await boxes.count();
+    if (count > 0) {
+      for (let i = 0; i < count && i < otpValue.length; i++) {
+        await boxes.nth(i).fill(otpValue[i]);
+      }
+      return true;
+    }
+  }
+
+  // Auto-detect: N separate maxlength=1 boxes is the most common OTP pattern.
+  const digitBoxes = page.locator('input[maxlength="1"]');
+  const digitBoxCount = await digitBoxes.count();
+  if (digitBoxCount >= 4 && digitBoxCount <= 8) {
+    for (let i = 0; i < digitBoxCount; i++) {
+      await digitBoxes.nth(i).fill(otpValue[i % otpValue.length]);
+    }
+    return true;
+  }
+
+  // Auto-detect: a single field labeled/named something OTP-ish.
+  const singleField = page.locator(
+    'input[name*="otp" i], input[aria-label*="otp" i], input[placeholder*="otp" i], input[id*="otp" i]'
+  );
+  if ((await singleField.count()) > 0) {
+    await singleField.first().fill(otpValue);
+    return true;
+  }
+
+  return false;
+}
+
+async function submitOtp(page: Page, auth: AuthConfig): Promise<boolean> {
+  if (auth.otpSubmitSelector) {
+    const el = page.locator(auth.otpSubmitSelector as string).first();
+    if ((await el.count()) > 0) {
+      await el.click();
+      return true;
+    }
+  }
+  const generic = page.locator('button[type="submit"], input[type="submit"]').first();
+  if ((await generic.count()) > 0) {
+    await generic.click();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Generic credentials-based login: fills a username/password form, submits it, and
+ * handles a second mobile-number + OTP step if the app presents one (confirmed via a
+ * real run against spvithlani.investwellfront.com on 2026-08-04 — the app moves from
+ * email+password straight to "Enter Mobile Number" before reaching /client/, which the
+ * original single-step implementation didn't account for and misread as a login
+ * failure). All selectors are configurable since they're app-specific; the ones below
+ * were captured from real rendered DOM, not guessed, except where noted.
  */
 export async function login(
   page: Page,
@@ -63,26 +153,64 @@ export async function login(
   await page.fill(auth.passwordSelector as string, auth.password as string);
   await page.click(auth.submitSelector as string);
 
-  // A successful login navigates away from the login route entirely (verified
-  // 2026-08-04: spvithlani.investwellfront.com redirects /app/#/login -> plain
-  // /client/dashboard, no hash) — waiting for networkidle alone would "succeed" even
-  // on wrong credentials, since the login page itself settles into an idle state
-  // with an inline error message rather than failing to load.
   const postLoginUrlIncludes = (auth.postLoginUrlIncludes as string) ?? "/client/";
+  // Verified 2026-08-04: input[name="mobile"] + input[type=submit][value="Send OTP"]
+  // on spvithlani.investwellfront.com's post-credentials step.
+  const mobileSelector = (auth.mobileSelector as string) ?? 'input[name="mobile"]';
+  const mobileSubmitSelector =
+    (auth.mobileSubmitSelector as string) ?? 'input[type="submit"][value="Send OTP"]';
+  const otpValue = (auth.otpValue as string) ?? "123456";
+
+  let outcome: StepOutcome;
   try {
-    await page.waitForURL((url) => url.toString().includes(postLoginUrlIncludes), {
-      timeout: 15000,
-    });
+    outcome = await waitForNavigationOrMobileStep(page, postLoginUrlIncludes, mobileSelector, 15000);
   } catch {
     const evidence = await captureFailureEvidence(page, reportDir, "login-failure");
     throw new Error(
-      `Login did not navigate to a URL containing "${postLoginUrlIncludes}" within 15s — still on ` +
-        `${page.url()}.\n\n` +
-        "This does NOT necessarily mean the credentials are wrong — see the captured evidence below " +
-        "for what was actually on screen (an inline validation error, a CAPTCHA, an unexpected extra " +
-        "step, the click landing on the wrong element, etc.) before assuming that.\n\n" +
+      `After submitting credentials, neither navigated to a URL containing "${postLoginUrlIncludes}" ` +
+        `nor found a mobile-number field ("${mobileSelector}") within 15s — still on ${page.url()}.\n\n` +
+        "See the captured evidence below for what was actually on screen.\n\n" +
         evidence
     );
+  }
+
+  if (outcome === "mobileStep") {
+    const mobileNumber = randomIndianMobileNumber();
+    await page.fill(mobileSelector, mobileNumber);
+    await page.click(mobileSubmitSelector);
+
+    const otpFilled = await fillOtp(page, auth, otpValue).catch(() => false);
+    if (!otpFilled) {
+      const evidence = await captureFailureEvidence(page, reportDir, "otp-step-failure");
+      throw new Error(
+        "Mobile number submitted, but could not find an OTP input on the next screen using the " +
+          "built-in auto-detection (single field, or 4-8 separate digit boxes). Set auth.otpSelector " +
+          "or auth.otpDigitBoxSelector in accessibility.config.js to the real selector — see the " +
+          "captured evidence below for what the screen actually looks like.\n\n" +
+          evidence
+      );
+    }
+
+    const otpSubmitted = await submitOtp(page, auth).catch(() => false);
+    if (!otpSubmitted) {
+      const evidence = await captureFailureEvidence(page, reportDir, "otp-submit-failure");
+      throw new Error(
+        "OTP filled, but could not find a submit/verify button. Set auth.otpSubmitSelector in " +
+          "accessibility.config.js — see the captured evidence below.\n\n" +
+          evidence
+      );
+    }
+
+    try {
+      await page.waitForURL((url) => url.toString().includes(postLoginUrlIncludes), { timeout: 15000 });
+    } catch {
+      const evidence = await captureFailureEvidence(page, reportDir, "post-otp-failure");
+      throw new Error(
+        `After submitting OTP, did not navigate to a URL containing "${postLoginUrlIncludes}" within ` +
+          `15s — still on ${page.url()}.\n\n` +
+          evidence
+      );
+    }
   }
 
   try {
