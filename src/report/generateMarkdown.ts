@@ -11,22 +11,26 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * axe-core's own description text looks like "Fix any of the following:\n  bullet one\n
- * bullet two" — dumped into a Markdown table cell (the old format) that collapses
- * newlines, it reads as one unreadable run-on sentence. This turns it into a real
- * bulleted list instead.
+ * axe-core's own text looks like "Fix any of the following:\n  bullet one\n  bullet two"
+ * — dumped raw into a Markdown table cell (the old format) that collapses newlines, it
+ * reads as one unreadable run-on sentence. This turns it into a real bulleted list.
  */
-function formatProblem(description: string): string {
-  const lines = description
+function formatBullets(text: string): string {
+  const lines = text
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
-  if (lines.length <= 1) return description.trim();
+  if (lines.length <= 1) return text.trim();
 
   const [first, ...rest] = lines;
   return [first, ...rest.map((l) => `  - ${l}`)].join("\n");
 }
 
+/**
+ * Mirrors the certified audit sheet's own column split (per the user's reference
+ * example): a short "Error Description" naming what's wrong and which element, plus a
+ * separate "Recommendation for Fix" with the concrete technical fix — not one merged blob.
+ */
 function formatIssue(r: DiffResult): string {
   const label = STATUS_LABEL[r.diffStatus] ?? r.diffStatus;
   const criterionLine = r.criteriaCode
@@ -36,7 +40,18 @@ function formatIssue(r: DiffResult): string {
   const lines: string[] = [];
   lines.push(`#### ${label} — ${criterionLine} — ${r.severity || "n/a"}`);
   lines.push("");
-  lines.push(`**Problem:** ${formatProblem(r.description)}`);
+
+  if (r.help) {
+    lines.push(`**Error Description:** ${r.help}`);
+    if (r.elementHtml) {
+      lines.push("```html");
+      lines.push(r.elementHtml);
+      lines.push("```");
+    }
+    lines.push("");
+  }
+
+  lines.push(`**Recommendation for Fix:** ${formatBullets(r.description)}`);
   if (r.ruleId) {
     lines.push("");
     lines.push(`**Rule:** \`${r.ruleId}\`${r.helpUrl ? ` — [more info](${r.helpUrl})` : ""}`);

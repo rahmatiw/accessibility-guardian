@@ -5,6 +5,12 @@
 export interface ScanViolation {
   criteriaCode: string | null; // WCAG success criterion, mapped from the underlying axe-core rule id
   ruleId: string; // raw axe-core rule id, e.g. "color-contrast"
+  /** Short human summary of what's wrong, e.g. "Images must have alternative text" (axe rule.help). */
+  help: string;
+  /** The actual failing HTML snippet, e.g. `<img src="x.png">` — the closest thing to the certified
+   *  audit sheet's "1. Books 2. Vacation..." concrete instance list, without a human manually naming each one. */
+  elementHtml: string;
+  /** Longer WCAG-oriented explanation + the specific failure checklist (axe rule.description + node.failureSummary). */
   description: string;
   severity: "Critical" | "Major" | "Minor";
   selector: string; // CSS selector / component location of the failing element

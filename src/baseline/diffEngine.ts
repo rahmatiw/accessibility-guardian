@@ -9,6 +9,11 @@ export interface DiffResult {
   pageUrl: string;
   criteriaCode: string | null;
   ruleId: string | null;
+  /** Short human summary, e.g. "Images must have alternative text" — the audit sheet's "Error Description". */
+  help: string | null;
+  /** The actual failing HTML snippet. */
+  elementHtml: string | null;
+  /** Longer explanation + specific failure checklist — the audit sheet's "Recommendation for Fix". */
   description: string;
   severity: string;
   diffStatus: DiffStatus;
@@ -80,6 +85,8 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
       pageUrl: scan.pageUrl,
       criteriaCode: code,
       ruleId: violation.ruleId,
+      help: violation.help,
+      elementHtml: violation.elementHtml,
       description: violation.description,
       severity: violation.severity,
       diffStatus,
@@ -100,6 +107,8 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
         pageUrl: scan.pageUrl,
         criteriaCode: code,
         ruleId: null,
+        help: null,
+        elementHtml: null,
         description: "(no longer reproduces)",
         severity: "",
         diffStatus: "fixed",

@@ -37,27 +37,29 @@ export function axeResultsToViolations(results: AxeResults): ScanViolation[] {
 
     for (const node of rule.nodes) {
       const selector = node.target.join(" ");
-      const description = node.failureSummary ?? rule.description;
+      // Mirrors the certified audit sheet's own column split: "Error Description" was
+      // always a short human summary (axe's rule.help, e.g. "Images must have
+      // alternative text"), separate from "Recommendation for Fix" (axe's
+      // rule.description + the specific failure checklist, e.g. "Ensure <img>
+      // elements have alternative text... To solve this problem, fix the following:
+      // ..."). Previously these were mashed into one field.
+      const description = node.failureSummary ? `${rule.description}\n${node.failureSummary}` : rule.description;
+
+      const shared = {
+        ruleId: rule.id,
+        help: rule.help,
+        elementHtml: node.html,
+        description,
+        severity,
+        selector,
+        helpUrl: rule.helpUrl,
+      };
 
       if (criteriaCodes.length === 0) {
-        violations.push({
-          criteriaCode: null,
-          ruleId: rule.id,
-          description,
-          severity,
-          selector,
-          helpUrl: rule.helpUrl,
-        });
+        violations.push({ criteriaCode: null, ...shared });
       } else {
         for (const criteriaCode of criteriaCodes) {
-          violations.push({
-            criteriaCode,
-            ruleId: rule.id,
-            description,
-            severity,
-            selector,
-            helpUrl: rule.helpUrl,
-          });
+          violations.push({ criteriaCode, ...shared });
         }
       }
     }
