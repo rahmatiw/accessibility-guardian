@@ -77,6 +77,31 @@ export async function runScan(config: GuardianConfig): Promise<ScanRunResult> {
       }, authenticatedSessionStorage);
       try {
         await gotoAndSettle(routePage, pageUrl);
+
+        // Safety net, not a one-time fix: even with the sessionStorage re-injection
+        // above, a real run against spvithlani.investwellfront.com (2026-08-05)
+        // showed a page can *still* silently bounce back to the login screen —
+        // intermittently, not tied to any single root cause we could pin down (this
+        // is a shared, persistent test environment, not an isolated per-run one; see
+        // accessibility.config.js). Without this check, axe would happily scan the
+        // login page and the result would be silently misreported under the wrong
+        // page slug, exactly as happened before the sessionStorage fix. Better to
+        // fail loudly and specifically than risk that ever again.
+        if (config.auth.strategy === "credentials" && config.auth.usernameSelector) {
+          const bounced = await routePage
+            .locator(config.auth.usernameSelector as string)
+            .first()
+            .isVisible()
+            .catch(() => false);
+          if (bounced) {
+            throw new Error(
+              `Bounced back to the login page instead of loading ${pageUrl} — session was lost mid-scan ` +
+                "(known to happen intermittently against this shared environment). Findings from this " +
+                "page would otherwise be misattributed to it; skipping instead."
+            );
+          }
+        }
+
         const axeResults = await new AxeBuilder({ page: routePage }).analyze();
         const violations = axeResultsToViolations(axeResults);
 
