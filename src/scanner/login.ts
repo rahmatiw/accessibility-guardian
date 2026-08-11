@@ -18,14 +18,6 @@ async function captureFailureEvidence(page: Page, reportDir: string, label: stri
   return `Screenshot: ${screenshotPath}\nHTML dump: ${htmlPath}\nVisible page text (first 2000 chars):\n${visibleText}`;
 }
 
-/** Random 10-digit Indian mobile number (first digit 6-9, per the "+91" prefix shown on the mobile-entry step). */
-function randomIndianMobileNumber(): string {
-  const firstDigit = "6789"[Math.floor(Math.random() * 4)];
-  let rest = "";
-  for (let i = 0; i < 9; i++) rest += Math.floor(Math.random() * 10);
-  return firstDigit + rest;
-}
-
 type StepOutcome = "navigated" | "mobileStep";
 
 async function waitForNavigationOrMobileStep(
@@ -180,12 +172,22 @@ export async function login(
   }
 
   if (outcome === "mobileStep") {
-    // A random number does NOT work here — verified 2026-08-05: this step does a real
-    // lookup against the account and returns "No user found" for an unregistered
-    // number. auth.mobileNumber must be the real number registered against the test
-    // account; random generation is kept only as a fallback for apps where this step
-    // genuinely doesn't validate the number (unconfirmed for any app so far).
-    const mobileNumber = (auth.mobileNumber as string) ?? randomIndianMobileNumber();
+    // Fail immediately and specifically if none was configured, rather than guessing —
+    // verified 2026-08-05 (twice, against two different accounts) that this step does a
+    // real per-account lookup and rejects any number not registered to it ("No user
+    // found"), so a made-up number is guaranteed to fail anyway. This is the app's own
+    // security gate, not something this tool can route around; every account that hits
+    // this step needs its own real registered number supplied via auth.mobileNumber.
+    if (!auth.mobileNumber) {
+      const evidence = await captureFailureEvidence(page, reportDir, "mobile-step-no-number-configured");
+      throw new Error(
+        "This account requires a mobile number + OTP step, but no auth.mobileNumber is configured " +
+          "(e.g. via an A11Y_TEST_MOBILE env var). This has to be the real number registered against " +
+          "this specific account — there's no way to skip or guess past it, it's a real lookup the app " +
+          `performs. See ${reportDir}/mobile-step-no-number-configured.png for the screen it's stuck on.`
+      );
+    }
+    const mobileNumber = auth.mobileNumber as string;
     await page.fill(mobileSelector, mobileNumber);
     await page.click(mobileSubmitSelector);
 
