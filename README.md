@@ -84,6 +84,25 @@ against the real data today.
 4. `npx playwright install chromium` (one-time, downloads the browser binary).
 5. `npx accessibility-guardian scan`
 
+## Running as a different user / environment
+
+Credentials and anything account-specific should come from env vars, never be hardcoded in
+`accessibility.config.js` — that file is checked into the repo. frontend-client's config reads:
+
+| Env var | Required? | Meaning |
+|---|---|---|
+| `A11Y_TEST_USER` | yes | Login email |
+| `A11Y_TEST_PASSWORD` | yes | Login password |
+| `A11Y_TEST_MOBILE` | yes | Real registered mobile number for the OTP step (a wrong/random one is rejected — see login.ts) |
+| `A11Y_ENVIRONMENT` | no | Defaults to `spvithlani`. Set this to point at a different broker subdomain. |
+| `A11Y_BASE_URL` | no | Defaults to `http://<A11Y_ENVIRONMENT>.investwellfront.com`. Set directly if the URL pattern differs. |
+| `A11Y_TEST_CLIENT` | no | Defaults to `"A B MANDHARA"`. Which seeded test client to view via the broker->client handoff (see clientImpersonation.ts) — any client in that account's list should work. |
+
+This only covers swapping to a *different broker account* using the same broker->client
+handoff flow. A genuine client-role account (one that logs in straight to `/client/...`,
+no broker dashboard involved) needs two config changes, not just an env var: set
+`postLoginUrlIncludes: "/client/"` and remove `clientSearchText` entirely.
+
 ## Development
 
 ```
