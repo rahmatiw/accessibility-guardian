@@ -5,6 +5,26 @@ frontend-client. For the *why* behind the design, see
 [`docs/accessibility-guardian-requirements.md`](../../frontend-client/docs/accessibility-guardian-requirements.md)
 in frontend-client and this repo's own [README](../README.md).
 
+## Quick start (once prerequisites below are met)
+
+```bash
+cd code/
+git clone https://github.com/rahmatiw/accessibility-guardian.git
+cd accessibility-guardian
+npm install && npm run build
+npx playwright install chromium
+
+cd ../frontend-client
+A11Y_TEST_USER=<broker-email> \
+A11Y_TEST_PASSWORD=<broker-password> \
+A11Y_TEST_MOBILE=<broker-account's-registered-mobile-number> \
+A11Y_ENVIRONMENT=<subdomain, e.g. spvithlani> \
+A11Y_TEST_CLIENT="<a client name from that broker's client list>" \
+node ../accessibility-guardian/dist/cli/index.js scan
+
+cat accessibility/reports/report.md
+```
+
 ## What this actually does
 
 It's a real browser automation: launches Chromium, logs into a real broker account, views a
@@ -22,12 +42,21 @@ app, so the app has to be running and reachable first.
   normal browser and see the app, you're set — nothing extra to install for this part.
 - Node.js (v18+).
 - Both repos checked out **as sibling directories** (this matters — the config currently reaches into
-  accessibility-guardian via a relative path, since it isn't published anywhere yet):
+  accessibility-guardian via a relative path, since it isn't published anywhere yet — see §12.5 in
+  the requirements doc for the still-open question of whether that should become a proper npm/git
+  dependency instead):
   ```
   code/
-    frontend-client/
-    accessibility-guardian/
+    frontend-client/                (existing team repo)
+    accessibility-guardian/         (clone from below)
   ```
+  ```bash
+  cd code/
+  git clone https://github.com/rahmatiw/accessibility-guardian.git
+  ```
+  This currently lives under a personal GitHub account, not the `investwellonline` org — a deliberate
+  "leave it for now" call while the tool is still being proven out, not an oversight. Ask
+  [@rahmatiw](https://github.com/rahmatiw) for access if you can't reach it.
 - A test broker account for whichever environment you're scanning — email/password, its registered
   mobile number (for the OTP step), and the name of a client to view under that broker. Ask your team
   lead if you don't have one; don't reuse someone else's personal login for automated runs if you can
