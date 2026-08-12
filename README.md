@@ -75,6 +75,11 @@ against the real data today.
 
 ## Using this in a repo
 
+For frontend-client specifically, [`docs/how-to-run-a-scan.md`](docs/how-to-run-a-scan.md) is the
+concrete, step-by-step team guide (setup, running a scan, reading results, testing a PR, known
+limitations) — share that with the team rather than this section, which is the general/other-repos
+version.
+
 1. `npm install accessibility-guardian` (or a git dependency, pending §12.5 in the requirements doc).
 2. Copy `accessibility.config.example.js` to `accessibility.config.js` at your repo root and fill in
    `baseURL`, `baselineDir`, `reportDir`, and **real** `auth` selectors (the example's are placeholders —
