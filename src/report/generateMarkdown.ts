@@ -117,6 +117,33 @@ export function generateMarkdown(report: ScanReport): string {
   }
   lines.push("");
 
+  const globallyWaived = report.results.filter((r) => r.diffStatus === "waived" && r.waiverId);
+  if (globallyWaived.length > 0) {
+    lines.push(
+      "## ⚪ Waived by cross-page rule (info only — not counted as issues, already reflected in the summary above)"
+    );
+    lines.push("");
+    lines.push(
+      "These matched an accepted, won't-fix *pattern* (a specific library, theme color, or chart " +
+        "element) rather than a page-specific baseline entry — see `accessibility/waivers.json`."
+    );
+    lines.push("");
+    const byWaiver = new Map<string, { reason: string; count: number; pages: Set<string> }>();
+    for (const r of globallyWaived) {
+      const key = r.waiverId as string;
+      if (!byWaiver.has(key)) byWaiver.set(key, { reason: r.waiverReason ?? "", count: 0, pages: new Set() });
+      const entry = byWaiver.get(key)!;
+      entry.count++;
+      entry.pages.add(r.pageSlug);
+    }
+    lines.push("| Waiver | Reason | Instances | Pages |");
+    lines.push("|---|---|---|---|");
+    for (const [id, entry] of byWaiver.entries()) {
+      lines.push(`| \`${id}\` | ${entry.reason} | ${entry.count} | ${entry.pages.size} |`);
+    }
+    lines.push("");
+  }
+
   const actionable = report.results.filter(
     (r) => r.diffStatus === "new" || r.diffStatus === "reopened" || r.diffStatus === "existing"
   );

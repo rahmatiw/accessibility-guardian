@@ -1,6 +1,7 @@
 import { PageScanResult } from "../scanner/types";
 import { LoadedBaseline } from "./loadBaseline";
 import { FindingStatus } from "./types";
+import { WaiverRule, matchGlobalWaiver } from "./globalWaivers";
 
 export type DiffStatus = "new" | "existing" | "fixed" | "reopened" | "waived";
 
@@ -23,6 +24,9 @@ export interface DiffResult {
   sourceFile?: string | null;
   sourceLine?: number | null;
   sourceAmbiguous?: boolean;
+  /** Set when diffStatus === "waived" via a cross-page global waiver rather than the per-page baseline. */
+  waiverId?: string;
+  waiverReason?: string;
 }
 
 /**
@@ -35,7 +39,11 @@ export interface DiffResult {
  * which has seven separate 4.1.2 findings). This stub only does the page+criteria-level
  * grouping; element-level matching (via `selector`) is unimplemented.
  */
-export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffResult[] {
+export function diffPage(
+  scan: PageScanResult,
+  baseline: LoadedBaseline,
+  globalWaivers: WaiverRule[] = []
+): DiffResult[] {
   if (scan.scanError || scan.excludedReason) {
     // An empty violations list here means "we don't know" (failed) or "deliberately
     // not checked" (excluded) — either way, not "all clear". Diffing it would wrongly
@@ -68,8 +76,20 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
 
     const baselineStatus = code ? baselineByCriteria.get(code) : undefined;
 
+    // Checked before the per-page baseline, not after: a global waiver represents a
+    // deliberate, specific decision about this exact issue *pattern* (a library, a
+    // theme color pair, a chart element) — it should win even over a page whose own
+    // baseline says "closed_verified" (which would otherwise read as "reopened", a
+    // false alarm for something that was never really page-specific in the first place).
+    const globalWaiver = matchGlobalWaiver(
+      { ruleId: violation.ruleId, criteriaCode: code, elementHtml: violation.elementHtml, description: violation.description },
+      globalWaivers
+    );
+
     let diffStatus: DiffStatus;
-    if (baselineStatus === "waived") {
+    if (globalWaiver) {
+      diffStatus = "waived";
+    } else if (baselineStatus === "waived") {
       diffStatus = "waived";
     } else if (baselineStatus === "open") {
       diffStatus = "existing";
@@ -92,6 +112,8 @@ export function diffPage(scan: PageScanResult, baseline: LoadedBaseline): DiffRe
       diffStatus,
       selector: violation.selector,
       helpUrl: violation.helpUrl ?? null,
+      waiverId: globalWaiver?.id,
+      waiverReason: globalWaiver?.reason,
       componentName: violation.componentName,
       sourceFile: violation.sourceFile,
       sourceLine: violation.sourceLine,

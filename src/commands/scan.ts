@@ -4,6 +4,7 @@ import { loadConfig } from "../config/loadConfig";
 import { loadBaseline } from "../baseline/loadBaseline";
 import { runScan } from "../scanner/runScan";
 import { diffPage } from "../baseline/diffEngine";
+import { loadWaivers } from "../baseline/globalWaivers";
 import { buildReport } from "../report/types";
 import { generateMarkdown } from "../report/generateMarkdown";
 import { generateJson } from "../report/generateJson";
@@ -28,7 +29,8 @@ export async function scanCommand(cwd: string = process.cwd()): Promise<number> 
 
   const scanResult = await runScan(config);
 
-  const allDiffs = scanResult.pages.flatMap((page) => diffPage(page, baseline));
+  const globalWaivers = loadWaivers(config.waiversPath);
+  const allDiffs = scanResult.pages.flatMap((page) => diffPage(page, baseline, globalWaivers));
   const failedPages = scanResult.pages
     .filter((page) => page.scanError)
     .map((page) => ({ pageSlug: page.pageSlug, error: page.scanError as string }));

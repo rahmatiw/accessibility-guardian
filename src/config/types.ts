@@ -44,6 +44,14 @@ export interface GuardianConfig {
    * from a scan failure — this is a known limitation, not a bug in a given run.
    */
   excludedRoutes?: { slug: string; reason: string }[];
+  /**
+   * Path to a JSON file of cross-page waivers (src/baseline/globalWaivers.ts) — accepted,
+   * won't-fix issue *patterns* (a specific library, a specific theme color pair, an SVG
+   * chart element) rather than per-page baseline entries, for issues that show up on
+   * pages the certified audit never happened to sample the same shared widget on.
+   * Optional: if unset, no global waivers are applied.
+   */
+  waiversPath?: string;
 }
 
 export type { PageScanResult };
