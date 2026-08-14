@@ -71,5 +71,23 @@ export async function resolveClientSession(
   ]);
 
   await clientPage.waitForLoadState("domcontentloaded");
+
+  // CRITICAL, found 2026-08-12: the popup's URL carries ?uid=...&levelNo=... but the
+  // app writes them into sessionStorage asynchronously — verified directly: at 0ms
+  // after domcontentloaded, sessionStorage has only 4 keys (uid/levelNo missing); by
+  // 500ms it reliably has all 6. Returning right after domcontentloaded (the old
+  // behavior) meant runScan.ts captured an incomplete session — looked successful
+  // (no error thrown here) but every subsequent page bounced back to login
+  // immediately, including right after a fresh re-authentication, since the retried
+  // session was equally incomplete. Poll for the actual key instead of guessing a
+  // fixed delay, which would either be fragile (too short) or wastefully slow (too long).
+  await clientPage
+    .waitForFunction(() => window.sessionStorage.getItem("uid") !== null, { timeout: 10000 })
+    .catch(() => {
+      // Don't fail the whole handoff over this — some other app might genuinely not
+      // use a "uid" key at all. Let the caller's own session-validity checks catch a
+      // truly broken handoff instead of guessing what "required" means here.
+    });
+
   return clientPage;
 }
